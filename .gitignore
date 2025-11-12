@@ -1,5 +1,8 @@
 video/**
 
+# Jupyter
+**/.ipynb_checkpoints/**
+
 # Python-generated files
 __pycache__/
 *.py[oc]

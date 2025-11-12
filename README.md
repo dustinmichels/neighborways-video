@@ -1,0 +1,28 @@
+# Neighborways Video
+
+Run notebooks:
+
+```sh
+ uv run --with jupyter jupyter lab
+```
+
+Clear video:
+
+```sh
+uv run --with jupyter ./clear_notebooks.sh
+```
+
+Make samples of videos:
+
+```sh
+ffmpeg -i input.mp4 -ss 0 -t 180 -c copy output.mp4
+```
+
+## About video
+
+| Date      | Intersection    | Start Time | End Time |
+| --------- | --------------- | ---------- | -------- |
+| 6-25-2024 | Broadway & Glen | 5:10 PM    | 5:40 PM  |
+| 7-16-2025 | Glen & Broadway | 4:30 PM    | 5:00 PM  |
+| 6-25-2024 | Glen & Oliver   | 4:30 PM    | 5:00 PM  |
+| 7-16-2025 | Glen & Oliver   | 4:00 PM    | 4:30 PM  |
