@@ -1,4 +1,5 @@
 video/**
+out/**
 
 # YOLOv8 model weights
 yolov8*.pt

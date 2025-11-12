@@ -10,7 +10,7 @@ mkdir -p video/glen-broadway/short
 for place in glen-oliver glen-broadway; do
   for part in before after; do
     ffmpeg -i "video/${place}/${part}_${place}.mp4" \
-    -ss 300 -t 120 -c copy "video/${place}/short/${part}_${place}.mp4"
+    -ss 300 -t 45 -c copy "video/${place}/short/${part}_${place}.mp4"
   done
 done
 
