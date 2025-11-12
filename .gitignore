@@ -1,5 +1,8 @@
 video/**
 
+# YOLOv8 model weights
+yolov8n.pt
+
 # Jupyter
 **/.ipynb_checkpoints/**
 

@@ -3,7 +3,7 @@
 Run notebooks:
 
 ```sh
- uv run --with jupyter jupyter lab
+uv run --with jupyter jupyter lab
 ```
 
 Clear video:
@@ -15,7 +15,7 @@ uv run --with jupyter ./clear_notebooks.sh
 Make samples of videos:
 
 ```sh
-ffmpeg -i input.mp4 -ss 0 -t 180 -c copy output.mp4
+./make_short_videos.sh
 ```
 
 ## About video
