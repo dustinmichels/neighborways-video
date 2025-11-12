@@ -4,7 +4,7 @@ import cv2
 from ultralytics import YOLO
 
 # Load YOLOv8 model
-model = YOLO("yolov8s.pt")
+model = YOLO("yolov8l.pt")
 
 # Start video
 # cap = cv2.VideoCapture("video/glen-oliver/short-resample/before_glen-oliver.mp4")
