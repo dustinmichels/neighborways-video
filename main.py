@@ -7,14 +7,28 @@ from ultralytics import YOLO
 model = YOLO("yolov8s.pt")
 
 # Start video
+# cap = cv2.VideoCapture("video/glen-oliver/short-resample/before_glen-oliver.mp4")
 cap = cv2.VideoCapture("video/glen-oliver/short/before_glen-oliver.mp4")
 
 # Dictionary to store unique IDs per class
 unique_objects: Dict[str, Set[int]] = {
     "person": set(),
+    "bicycle": set(),
     "car": set(),
     "motorbike": set(),
-    "bicycle": set(),
+    "bus": set(),
+    "truck": set(),
+}
+
+# Define colors for each object class (BGR format)
+colors = {
+    "person": (0, 255, 0),  # Green
+    "bicycle": (255, 0, 255),  # Magenta
+    "car": (255, 0, 0),  # Blue
+    "motorbike": (0, 165, 255),  # Orange
+    "bus": (0, 255, 255),  # Yellow
+    "truck": (0, 140, 255),  # Dark Orange
+    "train": (255, 255, 0),  # Cyan
 }
 
 while True:
@@ -45,29 +59,33 @@ while True:
                 # Add track ID to the set for that class
                 unique_objects[label].add(track_id)
 
-                # Draw bounding box
+                # Get color for this object class
+                color = colors.get(label, (0, 255, 0))  # Default to green if not found
+
+                # Draw bounding box with class-specific color
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(
                     frame,
                     f"{label} ID:{track_id}",
                     (x1, y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
-                    (255, 255, 255),
+                    color,  # Use same color for text
                     2,
                 )
 
-    # Display current counts
+    # Display current counts with class-specific colors
     y_offset = 30
     for label, ids in unique_objects.items():
+        color = colors.get(label, (0, 255, 255))
         cv2.putText(
             frame,
             f"{label}: {len(ids)}",
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (0, 255, 255),
+            color,  # Use class color instead of cyan
             2,
         )
         y_offset += 30
