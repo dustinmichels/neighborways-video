@@ -3,11 +3,13 @@ import csv
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+from src.types import ImgRecord
 
 # --- ARGUMENT PARSING ---
 parser = argparse.ArgumentParser(description="YOLO object tracking and crop saving")
@@ -23,7 +25,7 @@ MODEL_PATH = "yolov8s.pt"
 VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
 OUTPUT_DIR = Path("out/saved_unique_crops")
 IMG_DIR = OUTPUT_DIR / "img"
-MIN_CONFIDENCE = 0.3  # only consider detections above this confidence
+MIN_CONFIDENCE = 0.5  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
 CROP_SIZE = (256, 256)  # saved crop size (width, height), or None to keep original
 ENABLE_DRAWING = not args.no_draw  # Control drawing based on command line arg
@@ -37,19 +39,8 @@ if OUTPUT_DIR.exists():
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 IMG_DIR.mkdir(parents=True, exist_ok=True)
 
-# CSV manifest
-manifest_path = OUTPUT_DIR / "manifest.csv"
-manifest_file = open(manifest_path, "w", newline="")
-csv_writer = csv.writer(manifest_file)
-csv_writer.writerow(
-    [
-        "saved_path",
-        "label",
-        "track_id",
-        "frame_no",
-        "conf",
-    ]
-)
+# List to store ImgRecord instances
+manifest_records: List[ImgRecord] = []
 
 # Load YOLO model
 model = YOLO(MODEL_PATH)
@@ -150,17 +141,15 @@ while True:
                 # Save the cropped image
                 cv2.imwrite(str(save_path), crop)
 
-                # Record in CSV manifest
-                csv_writer.writerow(
-                    [
-                        str(save_path),
-                        label,
-                        track_id,
-                        frame_no,
-                        f"{conf:.4f}",
-                    ]
+                # Create ImgRecord and add to manifest
+                record = ImgRecord(
+                    saved_path=str(save_path),
+                    label=label,
+                    track_id=track_id,
+                    frame_no=frame_no,
+                    conf=conf,
                 )
-                manifest_file.flush()
+                manifest_records.append(record)
 
                 # Optional visual cue on the frame (only if drawing enabled)
                 if ENABLE_DRAWING:
@@ -189,23 +178,8 @@ while True:
                     2,
                 )
 
-    # Show per-class counts and display video (only if drawing enabled)
+    # Display video (only if drawing enabled)
     if ENABLE_DRAWING:
-        y_offset = 30
-        for label, ids in unique_objects.items():
-            color = colors.get(label, (0, 255, 255))
-            cv2.putText(
-                frame,
-                f"{label}: {len(ids)}",
-                (10, y_offset),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                color,
-                2,
-            )
-            y_offset += 28
-
-        # Display live video feed
         cv2.imshow("Tracking and Saving Unique Crops", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
@@ -217,28 +191,30 @@ while True:
 cap.release()
 if ENABLE_DRAWING:
     cv2.destroyAllWindows()
-manifest_file.close()
 
-# Print summary
-print("Final unique object counts:")
-for k, v in unique_objects.items():
-    print(f"{k}: {len(v)}")
-print(f"Saved crops + manifest to: {OUTPUT_DIR.resolve()}")
+print(f"Saved crops to: {OUTPUT_DIR.resolve()}")
 
-# Convert CSV manifest to JSON
-print("Converting manifest to JSON...")
+# Write CSV manifest from ImgRecord objects
+print("Writing CSV manifest...")
+manifest_csv_path = OUTPUT_DIR / "manifest.csv"
+with open(manifest_csv_path, "w", newline="") as csvfile:
+    if manifest_records:
+        # Use the field names from the Pydantic model
+        fieldnames = list(ImgRecord.model_fields.keys())
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in manifest_records:
+            writer.writerow(record.model_dump())
+
+print(f"CSV manifest saved to: {manifest_csv_path.resolve()}")
+
+# Write JSON manifest from ImgRecord objects
+print("Writing JSON manifest...")
 json_manifest_path = OUTPUT_DIR / "manifest.json"
-
-manifest_data = []
-with open(manifest_path, "r", newline="") as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        row["track_id"] = int(row["track_id"])
-        row["frame_no"] = int(row["frame_no"])
-        row["conf"] = float(row["conf"])
-        manifest_data.append(row)
-
 with open(json_manifest_path, "w") as jsonfile:
+    # Convert all records to dictionaries
+    manifest_data = [record.model_dump() for record in manifest_records]
     json.dump(manifest_data, jsonfile, indent=2)
 
 print(f"JSON manifest saved to: {json_manifest_path.resolve()}")
+print(f"Total unique objects saved: {len(manifest_records)}")

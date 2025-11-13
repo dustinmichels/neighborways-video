@@ -9,6 +9,8 @@ from sklearn.metrics.pairwise import cosine_similarity  # type: ignore
 from tqdm import tqdm
 from transformers import CLIPModel, CLIPProcessor
 
+from src.types import ImgRecord
+
 # Load your CSV manifest
 df = pd.read_csv("out/saved_unique_crops/manifest.csv")
 
@@ -81,29 +83,28 @@ for i in range(len(df)):
     root = uf.find(i)
     bins_dict[root].append(i)
 
-# Convert to list of bins, maintaining order
+# Convert to list of bins with ImgRecord objects
 bins = []
 for indices in bins_dict.values():
     # Sort indices to maintain original timestamp order
     indices.sort()
-    bin_files = [df.loc[idx, "saved_path"] for idx in indices]
-    bins.append(bin_files)
+    bin_records = [
+        ImgRecord(
+            saved_path=df.loc[idx, "saved_path"],
+            label=df.loc[idx, "label"],
+            track_id=int(df.loc[idx, "track_id"]),
+            frame_no=int(df.loc[idx, "frame_no"]),
+            conf=float(df.loc[idx, "conf"]),
+        )
+        for idx in indices
+    ]
+    bins.append(bin_records)
 
-# Sort bins by the first file's index to maintain overall order
-bins.sort(key=lambda b: df[df["saved_path"] == b[0]].index[0])
+# Sort bins by the first record's index to maintain overall order
+bins.sort(key=lambda b: df[df["saved_path"] == b[0].saved_path].index[0])
 
-# Create output JSON structure
-output = {
-    "bins": bins,
-    "metadata": {
-        "total_files": len(df),
-        "total_bins": len(bins),
-        "bins_with_duplicates": sum(1 for b in bins if len(b) > 1),
-        "singleton_bins": sum(1 for b in bins if len(b) == 1),
-        "similarity_threshold": threshold,
-        "duplicate_pairs_found": len(pairs),
-    },
-}
+# Convert to JSON-serializable format
+output = [[record.model_dump() for record in bin_records] for bin_records in bins]
 
 # Save to JSON file
 output_path = "duplicate_bins.json"
@@ -112,16 +113,18 @@ with open(output_path, "w") as f:
 
 print(f"\n✅ Results saved to {output_path}")
 print(f"📊 Summary:")
-print(f"  - Total files: {output['metadata']['total_files']}")
-print(f"  - Total bins: {output['metadata']['total_bins']}")
-print(f"  - Bins with duplicates: {output['metadata']['bins_with_duplicates']}")
-print(f"  - Singleton bins: {output['metadata']['singleton_bins']}")
-print(f"  - Duplicate pairs found: {output['metadata']['duplicate_pairs_found']}")
+print(f"  - Total files: {len(df)}")
+print(f"  - Total bins: {len(bins)}")
+print(f"  - Bins with duplicates: {sum(1 for b in bins if len(b) > 1)}")
+print(f"  - Singleton bins: {sum(1 for b in bins if len(b) == 1)}")
+print(f"  - Duplicate pairs found: {len(pairs)}")
 
 # Optional: Print some example bins with duplicates
 print("\n🧩 Example duplicate groups:")
-for i, bin_files in enumerate(bins[:5]):  # Show first 5 bins
-    if len(bin_files) > 1:
-        print(f"\nBin {i + 1} ({len(bin_files)} files):")
-        for f in bin_files:
-            print(f"  - {f}")
+for i, bin_records in enumerate(bins[:5]):  # Show first 5 bins
+    if len(bin_records) > 1:
+        print(f"\nBin {i + 1} ({len(bin_records)} files):")
+        for record in bin_records:
+            print(
+                f"  - {record.saved_path} (track_id={record.track_id}, frame={record.frame_no})"
+            )
