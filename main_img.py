@@ -2,7 +2,6 @@ import argparse
 import csv
 import json
 import shutil
-import time
 from pathlib import Path
 from typing import Dict, Set
 
@@ -49,11 +48,6 @@ csv_writer.writerow(
         "track_id",
         "frame_no",
         "conf",
-        "bbox_x1",
-        "bbox_y1",
-        "bbox_x2",
-        "bbox_y2",
-        "timestamp",
     ]
 )
 
@@ -149,11 +143,8 @@ while True:
                 if CROP_SIZE is not None:
                     crop = cv2.resize(crop, CROP_SIZE)
 
-                # Generate filename with timestamp first, then label
-                timestamp = int(time.time())
-                filename = (
-                    f"{timestamp}_{label}_id{track_id}_f{frame_no}_c{conf:.2f}.jpg"
-                )
+                # Generate filename with frame number first, then label
+                filename = f"f{frame_no:06d}_{label}_id{track_id}_c{conf:.2f}.jpg"
                 save_path = IMG_DIR / filename
 
                 # Save the cropped image
@@ -167,11 +158,6 @@ while True:
                         track_id,
                         frame_no,
                         f"{conf:.4f}",
-                        x1p,
-                        y1p,
-                        x2p,
-                        y2p,
-                        timestamp,
                     ]
                 )
                 manifest_file.flush()
@@ -250,11 +236,6 @@ with open(manifest_path, "r", newline="") as csvfile:
         row["track_id"] = int(row["track_id"])
         row["frame_no"] = int(row["frame_no"])
         row["conf"] = float(row["conf"])
-        row["bbox_x1"] = int(row["bbox_x1"])
-        row["bbox_y1"] = int(row["bbox_y1"])
-        row["bbox_x2"] = int(row["bbox_x2"])
-        row["bbox_y2"] = int(row["bbox_y2"])
-        row["timestamp"] = int(row["timestamp"])
         manifest_data.append(row)
 
 with open(json_manifest_path, "w") as jsonfile:

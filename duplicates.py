@@ -1,3 +1,6 @@
+import json
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
@@ -36,13 +39,89 @@ similarity_matrix = cosine_similarity(embeddings)
 
 # Flag pairs that are very similar (but not identical)
 threshold = 0.93  # tweak this; 0.9–0.95 is typical for near-duplicates
+
+
+# Build a graph using Union-Find to group similar images
+class UnionFind:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.rank = [0] * n
+
+    def find(self, x):
+        if self.parent[x] != x:
+            self.parent[x] = self.find(self.parent[x])
+        return self.parent[x]
+
+    def union(self, x, y):
+        px, py = self.find(x), self.find(y)
+        if px == py:
+            return
+        if self.rank[px] < self.rank[py]:
+            px, py = py, px
+        self.parent[py] = px
+        if self.rank[px] == self.rank[py]:
+            self.rank[px] += 1
+
+
+# Initialize Union-Find
+uf = UnionFind(len(df))
+
+# Find all similar pairs and union them
 pairs = []
 for i in range(len(df)):
     for j in range(i + 1, len(df)):
         sim = similarity_matrix[i, j]
         if sim > threshold:
-            pairs.append((df.loc[i, "saved_path"], df.loc[j, "saved_path"], sim))
+            uf.union(i, j)
+            pairs.append((i, j, sim))
 
-print("\n🧩 Potential Near-Duplicate Pairs:")
-for a, b, sim in sorted(pairs, key=lambda x: -x[2]):
-    print(f"{a}  <->  {b}   (similarity={sim:.3f})")
+# Group images by their root parent (bin)
+bins_dict = defaultdict(list)
+for i in range(len(df)):
+    root = uf.find(i)
+    bins_dict[root].append(i)
+
+# Convert to list of bins, maintaining order
+bins = []
+for indices in bins_dict.values():
+    # Sort indices to maintain original timestamp order
+    indices.sort()
+    bin_files = [df.loc[idx, "saved_path"] for idx in indices]
+    bins.append(bin_files)
+
+# Sort bins by the first file's index to maintain overall order
+bins.sort(key=lambda b: df[df["saved_path"] == b[0]].index[0])
+
+# Create output JSON structure
+output = {
+    "bins": bins,
+    "metadata": {
+        "total_files": len(df),
+        "total_bins": len(bins),
+        "bins_with_duplicates": sum(1 for b in bins if len(b) > 1),
+        "singleton_bins": sum(1 for b in bins if len(b) == 1),
+        "similarity_threshold": threshold,
+        "duplicate_pairs_found": len(pairs),
+    },
+}
+
+# Save to JSON file
+output_path = "duplicate_bins.json"
+with open(output_path, "w") as f:
+    json.dump(output, f, indent=2)
+
+print(f"\n✅ Results saved to {output_path}")
+print(f"📊 Summary:")
+print(f"  - Total files: {output['metadata']['total_files']}")
+print(f"  - Total bins: {output['metadata']['total_bins']}")
+print(f"  - Bins with duplicates: {output['metadata']['bins_with_duplicates']}")
+print(f"  - Singleton bins: {output['metadata']['singleton_bins']}")
+print(f"  - Duplicate pairs found: {output['metadata']['duplicate_pairs_found']}")
+
+# Optional: Print some example bins with duplicates
+print("\n🧩 Example duplicate groups:")
+for i, bin_files in enumerate(bins[:5]):  # Show first 5 bins
+    if len(bin_files) > 1:
+        print(f"\nBin {i + 1} ({len(bin_files)} files):")
+        for f in bin_files:
+            print(f"  - {f}")
