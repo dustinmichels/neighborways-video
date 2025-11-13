@@ -149,10 +149,10 @@ while True:
                 if CROP_SIZE is not None:
                     crop = cv2.resize(crop, CROP_SIZE)
 
-                # Generate filename with label and timestamp
+                # Generate filename with timestamp first, then label
                 timestamp = int(time.time())
                 filename = (
-                    f"{label}_id{track_id}_f{frame_no}_c{conf:.2f}_{timestamp}.jpg"
+                    f"{timestamp}_{label}_id{track_id}_f{frame_no}_c{conf:.2f}.jpg"
                 )
                 save_path = IMG_DIR / filename
 

@@ -1,5 +1,15 @@
 # Neighborways Video
 
+To run:
+
+```sh
+# with video
+uv run main_img.py
+
+# without video
+uv run main_img.py --no-draw
+```
+
 Run notebooks:
 
 ```sh
