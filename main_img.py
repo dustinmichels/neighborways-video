@@ -1,4 +1,6 @@
+import argparse
 import csv
+import json
 import shutil
 import time
 from pathlib import Path
@@ -8,13 +10,24 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+# --- ARGUMENT PARSING ---
+parser = argparse.ArgumentParser(description="YOLO object tracking and crop saving")
+parser.add_argument(
+    "--no-draw",
+    action="store_true",
+    help="Disable drawing boxes and displaying video feed (faster processing)",
+)
+args = parser.parse_args()
+
 # --- CONFIG ---
 MODEL_PATH = "yolov8s.pt"
 VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
 OUTPUT_DIR = Path("out/saved_unique_crops")
+IMG_DIR = OUTPUT_DIR / "img"
 MIN_CONFIDENCE = 0.3  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
 CROP_SIZE = (256, 256)  # saved crop size (width, height), or None to keep original
+ENABLE_DRAWING = not args.no_draw  # Control drawing based on command line arg
 # ----------------
 
 # Delete output dir if it exists
@@ -23,6 +36,7 @@ if OUTPUT_DIR.exists():
 
 # Create output directories
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+IMG_DIR.mkdir(parents=True, exist_ok=True)
 
 # CSV manifest
 manifest_path = OUTPUT_DIR / "manifest.csv"
@@ -43,13 +57,13 @@ csv_writer.writerow(
     ]
 )
 
-# Load model
+# Load YOLO model
 model = YOLO(MODEL_PATH)
 
-# Video
+# Open video
 cap = cv2.VideoCapture(VIDEO_PATH)
 
-# Track seen IDs per class (so we only save one crop per unique track id per class)
+# Track seen IDs per class
 unique_objects: Dict[str, Set[int]] = {
     "person": set(),
     "bicycle": set(),
@@ -59,14 +73,14 @@ unique_objects: Dict[str, Set[int]] = {
     "truck": set(),
 }
 
-# Colors for display (optional)
+# Colors for on-screen drawing
 colors = {
     "person": (0, 255, 0),  # Bright Green
     "bicycle": (255, 0, 255),  # Magenta
     "car": (255, 0, 0),  # Red
-    "motorbike": (255, 165, 0),  # Orange (changed from blue-ish)
+    "motorbike": (255, 165, 0),  # Orange
     "bus": (0, 255, 255),  # Cyan
-    "truck": (128, 0, 255),  # Purple (changed from similar to motorbike)
+    "truck": (128, 0, 255),  # Purple
 }
 
 frame_no = 0
@@ -76,7 +90,7 @@ while True:
         break
     frame_no += 1
 
-    # Run tracking (persist True so tracker keeps IDs)
+    # Run tracking (persist=True so tracker keeps IDs across frames)
     results = model.track(frame, persist=True, tracker="bytetrack.yaml")
 
     for r in results:
@@ -86,13 +100,9 @@ while True:
         boxes = r.boxes
         for i in range(len(boxes)):
             box = boxes[i]
-
-            # convert to python types
-            # Some attributes are tensors - cast safely
             try:
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
-                # id attr may not exist in old API; handle gracefully
                 track_id = (
                     int(box.id[0]) if getattr(box, "id", None) is not None else None
                 )
@@ -102,59 +112,54 @@ while True:
                     else np.array(box.xyxy[0])
                 )
             except Exception:
-                # best-effort fallback if API differs
                 continue
 
             if conf < MIN_CONFIDENCE:
                 continue
 
             label = model.names.get(cls_id, str(cls_id))
-
-            # Only consider classes we're tracking (matches your original dict)
             if label not in unique_objects:
                 continue
 
             if track_id is None:
-                # If no track id (shouldn't happen with a tracking call), skip
                 continue
 
-            # If this is the first time we see this track id for this label -> save crop + metadata
+            # Save only the first appearance of each unique track ID per class
             if track_id not in unique_objects[label]:
                 unique_objects[label].add(track_id)
 
                 x1, y1, x2, y2 = map(int, xyxy)
                 h, w = frame.shape[:2]
 
-                # Apply padding and clamp to image bounds
-                x1p = max(0, x1 - CROP_PADDING)
-                y1p = max(0, y1 - CROP_PADDING)
-                x2p = min(w - 1, x2 + CROP_PADDING)
-                y2p = min(h - 1, y2 + CROP_PADDING)
+                # Ensure the entire bounding box (plus padding) is captured safely
+                x1p = max(0, min(x1 - CROP_PADDING, w - 1))
+                y1p = max(0, min(y1 - CROP_PADDING, h - 1))
+                x2p = max(0, min(x2 + CROP_PADDING, w))
+                y2p = max(0, min(y2 + CROP_PADDING, h))
+
+                # Defensive check
+                if x2p <= x1p or y2p <= y1p:
+                    continue
 
                 crop = frame[y1p:y2p, x1p:x2p].copy()
                 if crop.size == 0:
-                    # safety: skip invalid crop
                     continue
 
-                # Optionally resize
+                # Optionally resize the crop
                 if CROP_SIZE is not None:
                     crop = cv2.resize(crop, CROP_SIZE)
 
-                # Create class folder
-                class_dir = OUTPUT_DIR / label
-                class_dir.mkdir(parents=True, exist_ok=True)
-
-                # Build safe filename
+                # Generate filename with label and timestamp
                 timestamp = int(time.time())
                 filename = (
                     f"{label}_id{track_id}_f{frame_no}_c{conf:.2f}_{timestamp}.jpg"
                 )
-                save_path = class_dir / filename
+                save_path = IMG_DIR / filename
 
-                # Save crop
+                # Save the cropped image
                 cv2.imwrite(str(save_path), crop)
 
-                # Write manifest row
+                # Record in CSV manifest
                 csv_writer.writerow(
                     [
                         str(save_path),
@@ -169,57 +174,90 @@ while True:
                         timestamp,
                     ]
                 )
-                manifest_file.flush()  # flush incrementally so partial results are saved if interrupted
+                manifest_file.flush()
 
-                # OPTIONAL: draw a small thumbnail or marker on the frame to show it was saved
+                # Optional visual cue on the frame (only if drawing enabled)
+                if ENABLE_DRAWING:
+                    cv2.putText(
+                        frame,
+                        f"SAVED {label} ID:{track_id}",
+                        (x1, max(15, y1 - 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 0),
+                        2,
+                    )
+
+            # Draw bbox on display frame (only if drawing enabled)
+            if ENABLE_DRAWING:
+                color = colors.get(label, (0, 255, 0))
+                x1, y1, x2, y2 = map(int, xyxy)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(
                     frame,
-                    f"SAVED {label} ID:{track_id}",
-                    (x1, max(15, y1 - 12)),
+                    f"{label} ID:{track_id} {conf:.2f}",
+                    (x1, y1 - 6),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
-                    (0, 255, 0),
+                    color,
                     2,
                 )
 
-            # draw bbox on frame (for display)
-            color = colors.get(label, (0, 255, 0))
-            x1, y1, x2, y2 = map(int, xyxy)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+    # Show per-class counts and display video (only if drawing enabled)
+    if ENABLE_DRAWING:
+        y_offset = 30
+        for label, ids in unique_objects.items():
+            color = colors.get(label, (0, 255, 255))
             cv2.putText(
                 frame,
-                f"{label} ID:{track_id} {conf:.2f}",
-                (x1, y1 - 6),
+                f"{label}: {len(ids)}",
+                (10, y_offset),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.7,
                 color,
                 2,
             )
+            y_offset += 28
 
-    # Display counts on-screen
-    y_offset = 30
-    for label, ids in unique_objects.items():
-        color = colors.get(label, (0, 255, 255))
-        cv2.putText(
-            frame,
-            f"{label}: {len(ids)}",
-            (10, y_offset),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            color,
-            2,
-        )
-        y_offset += 28
-
-    cv2.imshow("Tracking and Saving Unique Crops", frame)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
+        # Display live video feed
+        cv2.imshow("Tracking and Saving Unique Crops", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+    else:
+        # Print progress periodically when not displaying
+        if frame_no % 100 == 0:
+            print(f"Processed {frame_no} frames...")
 
 cap.release()
-cv2.destroyAllWindows()
+if ENABLE_DRAWING:
+    cv2.destroyAllWindows()
 manifest_file.close()
 
+# Print summary
 print("Final unique object counts:")
 for k, v in unique_objects.items():
     print(f"{k}: {len(v)}")
 print(f"Saved crops + manifest to: {OUTPUT_DIR.resolve()}")
+
+# Convert CSV manifest to JSON
+print("Converting manifest to JSON...")
+json_manifest_path = OUTPUT_DIR / "manifest.json"
+
+manifest_data = []
+with open(manifest_path, "r", newline="") as csvfile:
+    reader = csv.DictReader(csvfile)
+    for row in reader:
+        row["track_id"] = int(row["track_id"])
+        row["frame_no"] = int(row["frame_no"])
+        row["conf"] = float(row["conf"])
+        row["bbox_x1"] = int(row["bbox_x1"])
+        row["bbox_y1"] = int(row["bbox_y1"])
+        row["bbox_x2"] = int(row["bbox_x2"])
+        row["bbox_y2"] = int(row["bbox_y2"])
+        row["timestamp"] = int(row["timestamp"])
+        manifest_data.append(row)
+
+with open(json_manifest_path, "w") as jsonfile:
+    json.dump(manifest_data, jsonfile, indent=2)
+
+print(f"JSON manifest saved to: {json_manifest_path.resolve()}")
