@@ -104,10 +104,12 @@ for indices in bins_dict.values():
 bins.sort(key=lambda b: df[df["saved_path"] == b[0].saved_path].index[0])
 
 # Convert to JSON-serializable format
-output = [[record.model_dump() for record in bin_records] for bin_records in bins]
+output = {
+    "bins": [[record.model_dump() for record in bin_records] for bin_records in bins]
+}
 
 # Save to JSON file
-output_path = "duplicate_bins.json"
+output_path = "out/duplicate_bins.json"
 with open(output_path, "w") as f:
     json.dump(output, f, indent=2)
 

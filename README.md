@@ -8,6 +8,12 @@ uv run main_img.py
 
 # without video
 uv run main_img.py --no-draw
+
+# check for duplicates
+uv run duplicates.py
+
+# copy output
+cp -r out app/out
 ```
 
 Run notebooks:
