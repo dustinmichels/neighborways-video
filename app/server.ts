@@ -10,10 +10,10 @@ serve({
     const url = new URL(req.url);
     const filePath = url.pathname;
 
-    // Serve manifest.json
-    if (filePath === "/manifest.json") {
+    // Serve duplicate_bins.json
+    if (filePath === "/duplicate_bins.json") {
       const data = await readFile(
-        path.join(ROOT, "out/saved_unique_crops/manifest.json"),
+        path.join(ROOT, "out/duplicate_bins.json"),
         "utf-8"
       );
       return new Response(data, {
