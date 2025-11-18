@@ -40,7 +40,7 @@ embeddings = np.stack(embeddings)
 similarity_matrix = cosine_similarity(embeddings)
 
 # Flag pairs that are very similar (but not identical)
-threshold = 0.93  # tweak this; 0.9–0.95 is typical for near-duplicates
+threshold = 0.90  # tweak this; 0.9–0.95 is typical for near-duplicates
 
 
 # Build a graph using Union-Find to group similar images
@@ -114,7 +114,7 @@ with open(output_path, "w") as f:
     json.dump(output, f, indent=2)
 
 print(f"\n✅ Results saved to {output_path}")
-print(f"📊 Summary:")
+print("📊 Summary:")
 print(f"  - Total files: {len(df)}")
 print(f"  - Total bins: {len(bins)}")
 print(f"  - Bins with duplicates: {sum(1 for b in bins if len(b) > 1)}")

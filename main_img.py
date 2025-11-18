@@ -7,6 +7,8 @@ from typing import Dict, List, Set
 
 import cv2
 import numpy as np
+from rich.progress import (MofNCompleteColumn, Progress, SpinnerColumn,
+                           TimeElapsedColumn)
 from ultralytics import YOLO
 
 from src.types import ImgRecord
@@ -21,14 +23,17 @@ parser.add_argument(
 args = parser.parse_args()
 
 # --- CONFIG ---
-MODEL_PATH = "yolov8s.pt"
-VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
+# MODEL_PATH = "yolov8s.pt"
+MODEL_PATH = "yolov10n.pt"
+# VIDEO_PATH = "video/glen-oliver/after_glen-oliver.mp4"
+VIDEO_PATH = "video/glen-oliver/short/after_glen-oliver.mp4"
 OUTPUT_DIR = Path("out/saved_unique_crops")
 IMG_DIR = OUTPUT_DIR / "img"
 MIN_CONFIDENCE = 0.5  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
 CROP_SIZE = (256, 256)  # saved crop size (width, height), or None to keep original
 ENABLE_DRAWING = not args.no_draw  # Control drawing based on command line arg
+PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
 # ----------------
 
 # Delete output dir if it exists
@@ -42,11 +47,14 @@ IMG_DIR.mkdir(parents=True, exist_ok=True)
 # List to store ImgRecord instances
 manifest_records: List[ImgRecord] = []
 
-# Load YOLO model
-model = YOLO(MODEL_PATH)
+# Load YOLO model with verbose=False to suppress output
+model = YOLO(MODEL_PATH, verbose=False)
 
 # Open video
 cap = cv2.VideoCapture(VIDEO_PATH)
+
+# Get total frame count
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
 # Track seen IDs per class
 unique_objects: Dict[str, Set[int]] = {
@@ -69,16 +77,35 @@ colors = {
 }
 
 frame_no = 0
+
+# Create progress bar (only when not drawing to screen)
+if not ENABLE_DRAWING:
+    progress = Progress(
+        SpinnerColumn(),
+        *Progress.get_default_columns(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+    )
+    progress.start()
+    task = progress.add_task("[cyan]Processing frames...", total=total_frames)
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
     frame_no += 1
 
-    # Run tracking (persist=True so tracker keeps IDs across frames)
-    results = model.track(frame, persist=True, tracker="bytetrack.yaml")
+    # Skip frames for faster processing
+    if frame_no % PROCESS_EVERY_N_FRAMES != 0:
+        if not ENABLE_DRAWING:
+            progress.update(task, advance=1)  # Still update progress bar
+        continue
+
+    # Run tracking with verbose=False to suppress output
+    results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
 
     for r in results:
+
         if not hasattr(r, "boxes") or r.boxes is None:
             continue
 
@@ -178,21 +205,22 @@ while True:
                     2,
                 )
 
-    # Display video (only if drawing enabled)
+    # Update progress bar or display video
     if ENABLE_DRAWING:
         cv2.imshow("Tracking and Saving Unique Crops", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
     else:
-        # Print progress periodically when not displaying
-        if frame_no % 100 == 0:
-            print(f"Processed {frame_no} frames...")
+        # Update progress bar
+        progress.update(task, advance=1)
 
 cap.release()
 if ENABLE_DRAWING:
     cv2.destroyAllWindows()
+else:
+    progress.stop()
 
-print(f"Saved crops to: {OUTPUT_DIR.resolve()}")
+print(f"\nSaved crops to: {OUTPUT_DIR.resolve()}")
 
 # Write CSV manifest from ImgRecord objects
 print("Writing CSV manifest...")
