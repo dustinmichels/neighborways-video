@@ -51,23 +51,42 @@
         gap: 10px;
         flex-wrap: wrap;
         align-items: center;
+        min-height: 100px;
+        padding: 10px;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+      }
+      .bin-cell.drag-over {
+        background: #e8f5e9;
+        border: 2px dashed #4caf50;
       }
       .image-item {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 5px;
+        cursor: grab;
+        transition: opacity 0.2s, transform 0.2s;
+      }
+      .image-item:active {
+        cursor: grabbing;
+      }
+      .image-item.dragging {
+        opacity: 0.5;
+        transform: scale(0.95);
       }
       img {
         max-width: 150px;
         max-height: 150px;
         border: 2px solid #ddd;
         border-radius: 4px;
+        pointer-events: none;
       }
       .image-info {
         font-size: 11px;
         color: #666;
         text-align: center;
+        pointer-events: none;
       }
       .bin-number {
         font-weight: bold;
@@ -87,11 +106,85 @@
         color: #666;
         margin-top: 4px;
       }
+      .global-label-summary {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border: 2px solid #4caf50;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        font-size: 13px;
+        z-index: 1000;
+        min-width: 180px;
+      }
+      .global-label-summary-title {
+        font-weight: bold;
+        color: #4caf50;
+        margin-bottom: 12px;
+        font-size: 14px;
+        text-transform: uppercase;
+        border-bottom: 2px solid #e8f5e9;
+        padding-bottom: 8px;
+      }
+      .global-label-summary-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 8px 0;
+        align-items: center;
+      }
+      .global-label-summary-name {
+        color: #333;
+        font-weight: 500;
+      }
+      .global-label-summary-count {
+        background: #e8f5e9;
+        color: #2e7d32;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-weight: bold;
+        font-size: 12px;
+      }
+      .global-label-summary-total {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 2px solid #e8f5e9;
+        font-weight: bold;
+        color: #4caf50;
+        text-align: center;
+      }
+      .drag-hint {
+        font-size: 12px;
+        color: #666;
+        font-style: italic;
+        margin-top: 10px;
+      }
     </style>
   </head>
   <body>
     <div id="app">
       <h1>Duplicate Bins Viewer</h1>
+      <p class="drag-hint">
+        💡 Drag and drop images between rows to reclassify them
+      </p>
+
+      <!-- Global Floating Label Summary -->
+      <div v-if="!loading && !error" class="global-label-summary">
+        <div class="global-label-summary-title">Majority Label Counts</div>
+        <div
+          v-for="(count, label) in majorityLabelCounts"
+          :key="label"
+          class="global-label-summary-item"
+        >
+          <span class="global-label-summary-name">{{ label }}</span>
+          <span class="global-label-summary-count">{{ count }}</span>
+        </div>
+        <div class="global-label-summary-total">
+          Total Bins: {{ bins.length }}
+        </div>
+      </div>
 
       <div v-if="loading" class="loading">Loading...</div>
       <div v-else-if="error" class="error">{{ error }}</div>
@@ -105,10 +198,10 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(bin, index) in bins" :key="index">
+          <tr v-for="(bin, binIndex) in bins" :key="binIndex">
             <!-- Bin Number -->
             <td>
-              <span class="bin-number">Bin {{ index + 1 }}</span><br />
+              <span class="bin-number">Bin {{ binIndex + 1 }}</span><br />
               <small>{{ bin.length }} image(s)</small>
             </td>
 
@@ -125,11 +218,21 @@
 
             <!-- Images -->
             <td>
-              <div class="bin-cell">
+              <div
+                class="bin-cell"
+                :class="{ 'drag-over': dragOverBin === binIndex }"
+                @drop="onDrop($event, binIndex)"
+                @dragover="onDragOver($event, binIndex)"
+                @dragleave="onDragLeave"
+              >
                 <div
                   v-for="(item, itemIndex) in bin"
-                  :key="itemIndex"
+                  :key="`${binIndex}-${itemIndex}`"
                   class="image-item"
+                  :class="{ 'dragging': draggingItem && draggingItem.binIndex === binIndex && draggingItem.itemIndex === itemIndex }"
+                  draggable="true"
+                  @dragstart="onDragStart($event, binIndex, itemIndex)"
+                  @dragend="onDragEnd"
                 >
                   <img
                     :src="`/${item.saved_path}`"
@@ -158,15 +261,32 @@
             bins: [],
             loading: true,
             error: null,
+            draggingItem: null,
+            dragOverBin: null,
           };
         },
+        computed: {
+          majorityLabelCounts() {
+            // Count how many bins have each label as their majority
+            const counts = {};
+            this.bins.forEach((bin) => {
+              const majorityLabel = this.getMajorityLabel(bin).label;
+              counts[majorityLabel] = (counts[majorityLabel] || 0) + 1;
+            });
+            return counts;
+          },
+        },
         methods: {
-          getMajorityLabel(bin) {
+          getLabelCounts(bin) {
             // Count occurrences of each label
             const labelCounts = {};
             bin.forEach((item) => {
               labelCounts[item.label] = (labelCounts[item.label] || 0) + 1;
             });
+            return labelCounts;
+          },
+          getMajorityLabel(bin) {
+            const labelCounts = this.getLabelCounts(bin);
 
             // Find the label with the highest count
             let majorityLabel = "";
@@ -183,6 +303,51 @@
               count: maxCount,
               total: bin.length,
             };
+          },
+          onDragStart(event, binIndex, itemIndex) {
+            this.draggingItem = { binIndex, itemIndex };
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData(
+              "text/plain",
+              JSON.stringify({ binIndex, itemIndex })
+            );
+          },
+          onDragEnd() {
+            this.draggingItem = null;
+            this.dragOverBin = null;
+          },
+          onDragOver(event, binIndex) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            this.dragOverBin = binIndex;
+          },
+          onDragLeave() {
+            this.dragOverBin = null;
+          },
+          onDrop(event, targetBinIndex) {
+            event.preventDefault();
+            this.dragOverBin = null;
+
+            const data = JSON.parse(event.dataTransfer.getData("text/plain"));
+            const sourceBinIndex = data.binIndex;
+            const sourceItemIndex = data.itemIndex;
+
+            // Don't do anything if dropping in the same bin
+            if (sourceBinIndex === targetBinIndex) {
+              return;
+            }
+
+            // Get the item being moved
+            const item = this.bins[sourceBinIndex][sourceItemIndex];
+
+            // Remove from source bin
+            this.bins[sourceBinIndex].splice(sourceItemIndex, 1);
+
+            // Add to target bin
+            this.bins[targetBinIndex].push(item);
+
+            // Clean up empty bins (optional)
+            // this.bins = this.bins.filter(bin => bin.length > 0);
           },
           async loadData() {
             try {
