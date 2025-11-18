@@ -100,6 +100,11 @@
         border-radius: 4px;
         font-weight: bold;
         font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      .majority-label:hover {
+        background: #1976d2;
       }
       .label-count {
         font-size: 12px;
@@ -161,13 +166,63 @@
         font-style: italic;
         margin-top: 10px;
       }
+
+      /* Context Menu Styles */
+      .context-menu {
+        position: fixed;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        z-index: 2000;
+        min-width: 180px;
+        padding: 8px 0;
+      }
+      .context-menu-header {
+        padding: 8px 16px;
+        font-size: 11px;
+        color: #666;
+        text-transform: uppercase;
+        font-weight: bold;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 4px;
+      }
+      .context-menu-item {
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: background-color 0.15s;
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .context-menu-item:hover {
+        background: #f5f5f5;
+      }
+      .context-menu-item.current {
+        background: #e3f2fd;
+        font-weight: bold;
+      }
+      .context-menu-item-check {
+        color: #2196f3;
+        margin-left: 8px;
+      }
+      .context-menu-delete {
+        color: #f44336;
+        font-weight: 500;
+      }
+      .context-menu-delete:hover {
+        background: #ffebee;
+      }
     </style>
   </head>
   <body>
     <div id="app">
       <h1>Duplicate Bins Viewer</h1>
       <p class="drag-hint">
-        💡 Drag and drop images between rows to reclassify them
+        💡 Drag and drop images between rows to reclassify them, click a
+        majority label to reclassify the entire bin, or right-click an image to
+        delete it
       </p>
 
       <!-- Global Floating Label Summary -->
@@ -183,6 +238,48 @@
         </div>
         <div class="global-label-summary-total">
           Total Bins: {{ bins.length }}
+        </div>
+      </div>
+
+      <!-- Context Menu for Labels -->
+      <div
+        v-if="contextMenu.show"
+        class="context-menu"
+        :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+        @click.stop
+      >
+        <div class="context-menu-header">
+          Reclassify Bin {{ contextMenu.binIndex + 1 }}
+        </div>
+        <div
+          v-for="label in availableLabels"
+          :key="label"
+          class="context-menu-item"
+          :class="{ current: label === contextMenu.currentLabel }"
+          @click="reclassifyBin(contextMenu.binIndex, label)"
+        >
+          <span>{{ label }}</span>
+          <span
+            v-if="label === contextMenu.currentLabel"
+            class="context-menu-item-check"
+            >✓</span
+          >
+        </div>
+      </div>
+
+      <!-- Context Menu for Images -->
+      <div
+        v-if="imageContextMenu.show"
+        class="context-menu"
+        :style="{ top: imageContextMenu.y + 'px', left: imageContextMenu.x + 'px' }"
+        @click.stop
+      >
+        <div class="context-menu-header">Image Options</div>
+        <div
+          class="context-menu-item context-menu-delete"
+          @click="deleteImage(imageContextMenu.binIndex, imageContextMenu.itemIndex)"
+        >
+          <span>🗑️ Delete Image</span>
         </div>
       </div>
 
@@ -207,9 +304,12 @@
 
             <!-- Majority Label -->
             <td>
-              <span class="majority-label"
-                >{{ getMajorityLabel(bin).label }}</span
+              <span
+                class="majority-label"
+                @click.stop="showContextMenu($event, binIndex)"
               >
+                {{ getMajorityLabel(bin).label }}
+              </span>
               <div class="label-count">
                 {{ getMajorityLabel(bin).count }}/{{ getMajorityLabel(bin).total
                 }}
@@ -233,6 +333,7 @@
                   draggable="true"
                   @dragstart="onDragStart($event, binIndex, itemIndex)"
                   @dragend="onDragEnd"
+                  @contextmenu.prevent.stop="showImageContextMenu($event, binIndex, itemIndex)"
                 >
                   <img
                     :src="`/${item.saved_path}`"
@@ -263,6 +364,20 @@
             error: null,
             draggingItem: null,
             dragOverBin: null,
+            contextMenu: {
+              show: false,
+              x: 0,
+              y: 0,
+              binIndex: null,
+              currentLabel: null,
+            },
+            imageContextMenu: {
+              show: false,
+              x: 0,
+              y: 0,
+              binIndex: null,
+              itemIndex: null,
+            },
           };
         },
         computed: {
@@ -274,6 +389,16 @@
               counts[majorityLabel] = (counts[majorityLabel] || 0) + 1;
             });
             return counts;
+          },
+          availableLabels() {
+            // Get all unique labels from all bins
+            const labels = new Set();
+            this.bins.forEach((bin) => {
+              bin.forEach((item) => {
+                labels.add(item.label);
+              });
+            });
+            return Array.from(labels).sort();
           },
         },
         methods: {
@@ -303,6 +428,57 @@
               count: maxCount,
               total: bin.length,
             };
+          },
+          showContextMenu(event, binIndex) {
+            const currentLabel = this.getMajorityLabel(
+              this.bins[binIndex]
+            ).label;
+
+            // Hide image context menu if open
+            this.imageContextMenu.show = false;
+
+            this.contextMenu = {
+              show: true,
+              x: event.clientX,
+              y: event.clientY,
+              binIndex: binIndex,
+              currentLabel: currentLabel,
+            };
+          },
+          showImageContextMenu(event, binIndex, itemIndex) {
+            // Hide label context menu if open
+            this.contextMenu.show = false;
+
+            this.imageContextMenu = {
+              show: true,
+              x: event.clientX,
+              y: event.clientY,
+              binIndex: binIndex,
+              itemIndex: itemIndex,
+            };
+          },
+          hideContextMenu() {
+            this.contextMenu.show = false;
+            this.imageContextMenu.show = false;
+          },
+          deleteImage(binIndex, itemIndex) {
+            // Remove the image from the bin
+            this.bins[binIndex].splice(itemIndex, 1);
+
+            // Optionally, remove empty bins
+            if (this.bins[binIndex].length === 0) {
+              this.bins.splice(binIndex, 1);
+            }
+
+            this.hideContextMenu();
+          },
+          reclassifyBin(binIndex, newLabel) {
+            // Update all items in the bin to the new label
+            this.bins[binIndex].forEach((item) => {
+              item.label = newLabel;
+            });
+
+            this.hideContextMenu();
           },
           onDragStart(event, binIndex, itemIndex) {
             this.draggingItem = { binIndex, itemIndex };
@@ -367,6 +543,12 @@
         },
         mounted() {
           this.loadData();
+
+          // Hide context menu when clicking anywhere else
+          document.addEventListener("click", this.hideContextMenu);
+        },
+        beforeUnmount() {
+          document.removeEventListener("click", this.hideContextMenu);
         },
       }).mount("#app");
     </script>
