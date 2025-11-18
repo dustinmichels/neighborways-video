@@ -522,8 +522,8 @@
             // Add to target bin
             this.bins[targetBinIndex].push(item);
 
-            // Clean up empty bins (optional)
-            // this.bins = this.bins.filter(bin => bin.length > 0);
+            // Remove empty bins
+            this.bins = this.bins.filter((bin) => bin.length > 0);
           },
           async loadData() {
             try {
