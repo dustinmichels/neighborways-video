@@ -11,7 +11,7 @@ MODEL_PATH = "models/yolo11m.pt"
 VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
 MIN_CONFIDENCE = 0.6  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
-PROCESS_EVERY_N_FRAMES = 3  # Process every nth frame
+PROCESS_EVERY_N_FRAMES = 10  # Process every nth frame
 # ----------------
 
 
@@ -25,6 +25,7 @@ class Detection(SQLModel, table=True):
     bbox_x2: float
     bbox_y2: float
     frame_number: int
+    track_id: Optional[int] = None  # Add track ID field
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     img_data: bytes  # Store image as bytes
 
@@ -53,18 +54,7 @@ def save_detections(results, frame, frame_number: int):
         boxes = results[0].boxes
 
         if boxes is not None and len(boxes) > 0:
-            for box in boxes:
-                # Extract bounding box coordinates (xyxy format)
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-
-                # crop img with padding
-                x1_crop = max(int(x1) - CROP_PADDING, 0)
-                y1_crop = max(int(y1) - CROP_PADDING, 0)
-                x2_crop = min(int(x2) + CROP_PADDING, frame.shape[1])
-                y2_crop = min(int(y2) + CROP_PADDING, frame.shape[0])
-                cropped_img = frame[y1_crop:y2_crop, x1_crop:x2_crop]
-                img_bytes = frame_to_bytes(cropped_img)
-
+            for i, box in enumerate(boxes):
                 # Extract confidence and class
                 confidence = float(box.conf[0].cpu().numpy())
                 class_id = int(box.cls[0].cpu().numpy())
@@ -73,6 +63,21 @@ def save_detections(results, frame, frame_number: int):
                 # Filter by confidence
                 if confidence < MIN_CONFIDENCE:
                     continue
+
+                # Extract bounding box coordinates (xyxy format)
+                # Then, crop img with padding
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                x1_crop = max(int(x1) - CROP_PADDING, 0)
+                y1_crop = max(int(y1) - CROP_PADDING, 0)
+                x2_crop = min(int(x2) + CROP_PADDING, frame.shape[1])
+                y2_crop = min(int(y2) + CROP_PADDING, frame.shape[0])
+                cropped_img = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+                img_bytes = frame_to_bytes(cropped_img)
+
+                # Extract track ID if available
+                track_id = None
+                if boxes.id is not None:
+                    track_id = int(boxes.id[i].cpu().numpy())
 
                 # Create detection record
                 detection = Detection(
@@ -83,6 +88,7 @@ def save_detections(results, frame, frame_number: int):
                     bbox_x2=float(x2),
                     bbox_y2=float(y2),
                     frame_number=frame_number,
+                    track_id=track_id,
                     img_data=img_bytes,
                 )
 

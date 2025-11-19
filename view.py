@@ -6,7 +6,7 @@ import numpy as np
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 
-# Detection model (same as your original)
+# Define the Detection model
 class Detection(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     label: str
@@ -16,8 +16,9 @@ class Detection(SQLModel, table=True):
     bbox_x2: float
     bbox_y2: float
     frame_number: int
+    track_id: Optional[int] = None  # Add track ID field
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    img_data: bytes
+    img_data: bytes  # Store image as bytes
 
 
 engine = create_engine("sqlite:///detections.db", echo=False)
