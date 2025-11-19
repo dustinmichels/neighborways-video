@@ -1,12 +1,26 @@
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
-from sqlmodel import Session, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from src.database import Detection, engine
+
+
+class CombinedDetection(SQLModel, table=True):
+    """Table to store the best image and metadata for each track"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    track_id: int = Field(index=True, unique=True)
+    start_frame: int
+    end_frame: int
+    avg_conf: float
+    unique_labels: str  # Stored as comma-separated string
+    label: str  # Majority label
+    img_data: bytes  # Best image data
 
 
 def bytes_to_frame(img_bytes: bytes):
@@ -67,18 +81,21 @@ def select_best_images(
     dimensions_weight: float = 0.3,
 ):
     """
-    For each track_id, select and save the highest quality image based on composite score.
+    For each track_id, select the highest quality image and save track data to database.
 
     Args:
         sharpness_weight: Weight for sharpness metric (default: 0.4)
         confidence_weight: Weight for confidence metric (default: 0.3)
         dimensions_weight: Weight for dimensions metric (default: 0.3)
     """
-    # Create output directory
+    # Create the Track table if it doesn't exist
+    SQLModel.metadata.create_all(engine)
+
+    # Create output directory for image files
     output_dir = Path("out/best")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Selecting best images and saving to: {output_dir.absolute()}")
+    print(f"Selecting best images and saving to database and {output_dir.absolute()}")
     print(
         f"Weights: sharpness={sharpness_weight}, confidence={confidence_weight}, dimensions={dimensions_weight}"
     )
@@ -113,7 +130,11 @@ def select_best_images(
 
             # Collect metrics for all images in this track
             metrics = []
-            images = []
+
+            # Aggregate statistics for the track
+            confidences = []
+            labels = []
+            frame_numbers = []
 
             for detection in track_detections:
                 img = bytes_to_frame(detection.img_data)
@@ -137,11 +158,26 @@ def select_best_images(
                         "dimensions": dimensions,
                     }
                 )
-                images.append(img)
+
+                # Collect stats for aggregation
+                confidences.append(confidence)
+                labels.append(detection.label)
+                frame_numbers.append(detection.frame_number)
 
             if not metrics:
                 print(f"  ✗ No valid images found for track_id {track_id}")
                 continue
+
+            # Calculate aggregated statistics
+            start_frame = min(frame_numbers)
+            end_frame = max(frame_numbers)
+            avg_conf = sum(confidences) / len(confidences)
+            unique_labels_list = list(set(labels))
+            unique_labels_str = ",".join(sorted(unique_labels_list))
+
+            # Get majority label
+            label_counts = Counter(labels)
+            majority_label = label_counts.most_common(1)[0][0]
 
             # Normalize each metric across all images in this track
             sharpness_scores = [m["sharpness"] for m in metrics]
@@ -185,28 +221,70 @@ def select_best_images(
                 best_detection = best_metric["detection"]
                 best_img = best_metric["img"]
 
-                label = sanitize_filename(best_detection.label)
-                filename = f"track_{track_id}_{label}.jpg"
+                # Convert image to bytes
+                _, buffer = cv2.imencode(".jpg", best_img)
+                img_bytes = buffer.tobytes()
+
+                # Create Track record
+                track_record = CombinedDetection(
+                    track_id=track_id,
+                    start_frame=start_frame,
+                    end_frame=end_frame,
+                    avg_conf=avg_conf,
+                    unique_labels=unique_labels_str,
+                    label=majority_label,
+                    img_data=img_bytes,
+                )
+
+                # Save to database (update if exists)
+                existing_track = session.exec(
+                    select(CombinedDetection).where(
+                        CombinedDetection.track_id == track_id
+                    )
+                ).first()
+
+                if existing_track:
+                    # Update existing record
+                    existing_track.start_frame = start_frame
+                    existing_track.end_frame = end_frame
+                    existing_track.avg_conf = avg_conf
+                    existing_track.unique_labels = unique_labels_str
+                    existing_track.label = majority_label
+                    existing_track.img_data = img_bytes
+                else:
+                    # Add new record
+                    session.add(track_record)
+
+                session.commit()
+
+                # Also save to file
+                label_str = sanitize_filename(majority_label)
+                filename = f"track_{track_id}_{label_str}.jpg"
                 filepath = output_dir / filename
 
                 success = cv2.imwrite(str(filepath), best_img)
 
                 if success:
                     saved_count += 1
-                    print(f"  ✓ Saved best image: {filename}")
+                    print(f"  ✓ Saved to database and file: {filename}")
                     print(
-                        f"    (Frame {best_detection.frame_number}, "
-                        f"composite score: {best_composite_score:.3f})"
+                        f"    Track: frames {start_frame}-{end_frame}, "
+                        f"avg_conf={avg_conf:.2f}, label={majority_label}"
+                    )
+                    print(
+                        f"    Best frame: {best_detection.frame_number}, "
+                        f"composite score: {best_composite_score:.3f}"
                     )
                 else:
-                    print(f"  ✗ Failed to save: {filename}")
+                    print(f"  ✗ Failed to save file: {filename}")
             else:
                 print(f"  ✗ No valid images found for track_id {track_id}")
 
         print(f"\n{'=' * 60}")
         print(f"Processing complete!")
         print(f"Saved {saved_count}/{len(tracks)} best images")
-        print(f"Output location: {output_dir.absolute()}")
+        print(f"Database: Track table updated with {saved_count} records")
+        print(f"Files: {output_dir.absolute()}")
 
 
 if __name__ == "__main__":
