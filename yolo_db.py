@@ -29,18 +29,22 @@ while cap.isOpened():
     success, frame = cap.read()
 
     if success:
+        # check if we should process this frame
+        if frame_number % PROCESS_EVERY_N_FRAMES != 0:
+            frame_number += 1
+            continue
+
         # Run YOLO11 tracking on the frame, persisting tracks between frames
         results = model.track(frame, persist=True, tracker="bytetrack_config.yaml")
-
-        # Save detections to database
-        if frame_number % PROCESS_EVERY_N_FRAMES == 0:
-            save_detections(results, frame, frame_number, MIN_CONFIDENCE, CROP_PADDING)
 
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
 
         # Display the annotated frame
         cv2.imshow("YOLO11 Tracking", annotated_frame)
+
+        # Save detections to database
+        save_detections(results, frame, frame_number, MIN_CONFIDENCE, CROP_PADDING)
 
         frame_number += 1
 

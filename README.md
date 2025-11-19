@@ -1,5 +1,14 @@
 # Neighborways Video
 
+New stuff:
+
+```sh
+rm -rf out
+rm detections.db
+uv run yolo_db.py
+uv run export.py
+```
+
 To run:
 
 ```sh
@@ -14,6 +23,7 @@ uv run duplicates.py
 
 # copy output
 cp -r out app/out
+
 ```
 
 Run notebooks:
