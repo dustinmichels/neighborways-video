@@ -104,4 +104,4 @@ def save_detections(
                 saved_count += 1
 
             session.commit()
-            print(f"Saved {saved_count} detections from frame {frame_number}")
+            # print(f"Saved {saved_count} detections from frame {frame_number}")

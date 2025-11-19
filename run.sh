@@ -7,5 +7,6 @@
 
 rm -rf out
 rm detections.db
-uv run yolo_db.py
+
+uv run yolo_db.py --no-draw
 uv run get_best.py
