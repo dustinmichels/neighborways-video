@@ -2,7 +2,7 @@ video/**
 out/**
 
 # YOLOv8 model weights
-yolov*.pt
+yolo*.pt
 
 # Jupyter
 **/.ipynb_checkpoints/**

@@ -9,7 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity  # type: ignore
 from tqdm import tqdm
 from transformers import CLIPModel, CLIPProcessor
 
-from src.types import ImgRecord
+from src.models import ImgRecord
 
 # Load your CSV manifest
 df = pd.read_csv("out/saved_unique_crops/manifest.csv")

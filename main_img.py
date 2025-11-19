@@ -11,7 +11,7 @@ from rich.progress import (MofNCompleteColumn, Progress, SpinnerColumn,
                            TimeElapsedColumn)
 from ultralytics import YOLO
 
-from src.types import ImgRecord
+from src.models import ImgRecord
 
 # --- ARGUMENT PARSING ---
 parser = argparse.ArgumentParser(description="YOLO object tracking and crop saving")
@@ -24,9 +24,10 @@ args = parser.parse_args()
 
 # --- CONFIG ---
 # MODEL_PATH = "yolov8s.pt"
-MODEL_PATH = "yolov10n.pt"
+# MODEL_PATH = "yolov10m.pt"
+MODEL_PATH = "yolo11l.pt"
 # VIDEO_PATH = "video/glen-oliver/after_glen-oliver.mp4"
-VIDEO_PATH = "video/glen-oliver/short/after_glen-oliver.mp4"
+VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
 OUTPUT_DIR = Path("out/saved_unique_crops")
 IMG_DIR = OUTPUT_DIR / "img"
 MIN_CONFIDENCE = 0.5  # only consider detections above this confidence
