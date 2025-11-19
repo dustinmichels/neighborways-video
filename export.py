@@ -54,7 +54,7 @@ def export_images():
 
             # Create filename: {frame}_{id}_{label}.jpg
             label = sanitize_filename(detection.label)
-            filename = f"{detection.frame_number}_{detection.track_id}_{label}.jpg"
+            filename = f"{detection.track_id}_{detection.frame_number}_{label}_{detection.confidence:.2f}.jpg"
             filepath = output_dir / filename
 
             # Save the image

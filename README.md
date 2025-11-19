@@ -9,6 +9,12 @@ uv run yolo_db.py
 uv run export.py
 ```
 
+Also:
+
+```sh
+open -a "DB Browser for SQLite" detections.db
+```
+
 To run:
 
 ```sh
