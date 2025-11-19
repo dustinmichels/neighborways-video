@@ -42,3 +42,12 @@ Make samples of videos:
 | 7-16-2025 | Glen & Broadway | 4:30 PM    | 5:00 PM  |
 | 6-25-2024 | Glen & Oliver   | 4:30 PM    | 5:00 PM  |
 | 7-16-2025 | Glen & Oliver   | 4:00 PM    | 4:30 PM  |
+
+### My counts
+
+`video/glen-oliver/short/before_glen-oliver.mp4`
+
+People - 1
+Bikes - 1
+Cars - 7
+-> Van - 2
