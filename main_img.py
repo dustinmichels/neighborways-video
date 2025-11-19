@@ -8,11 +8,11 @@ from typing import Dict, List, Set
 import cv2
 import numpy as np
 from rich.console import Console
-from rich.progress import (MofNCompleteColumn, Progress, SpinnerColumn,
-                           TimeElapsedColumn)
+from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn, TimeElapsedColumn
 from rich.table import Table
 from ultralytics import YOLO
 
+from src.crop_img import crop_img
 from src.models import ImgRecord
 
 # --- ARGUMENT PARSING ---
@@ -27,16 +27,20 @@ args = parser.parse_args()
 # --- CONFIG ---
 # MODEL_PATH = "yolov8s.pt"
 # MODEL_PATH = "yolov10m.pt"
-MODEL_PATH = "yolo11l.pt"
+# MODEL_PATH = "yolo11l.pt"
+MODEL_PATH = "yolo11m.pt"
+
 # VIDEO_PATH = "video/glen-oliver/after_glen-oliver.mp4"
 VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
 OUTPUT_DIR = Path("out/saved_unique_crops")
 IMG_DIR = OUTPUT_DIR / "img"
+
 MIN_CONFIDENCE = 0.5  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
-CROP_SIZE = (256, 256)  # saved crop size (width, height), or None to keep original
+# CROP_SIZE = (256, 256)  # saved crop size (width, height), or None to keep original
+CROP_SIZE = None  # saved crop size (width, height), or None to keep original
 ENABLE_DRAWING = not args.no_draw  # Control drawing based on command line arg
-PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
+PROCESS_EVERY_N_FRAMES = 3  # Process every 2nd frame
 STATS_UPDATE_INTERVAL = 30  # Update console stats every N frames
 # ----------------
 
@@ -114,90 +118,157 @@ def draw_stats_panel(frame, unique_counts, current_counts, frame_no, total_saved
     panel_width = 320
     panel_x = 10
     panel_y = 10
-    
+
     # Create semi-transparent overlay
     overlay = frame.copy()
-    cv2.rectangle(overlay, (panel_x, panel_y), 
-                  (panel_x + panel_width, panel_y + panel_height), 
-                  (0, 0, 0), -1)
+    cv2.rectangle(
+        overlay,
+        (panel_x, panel_y),
+        (panel_x + panel_width, panel_y + panel_height),
+        (0, 0, 0),
+        -1,
+    )
     cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-    
+
     # Title
-    cv2.putText(frame, "TRACKING STATISTICS", 
-                (panel_x + 10, panel_y + 25),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    
+    cv2.putText(
+        frame,
+        "TRACKING STATISTICS",
+        (panel_x + 10, panel_y + 25),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        2,
+    )
+
     # Frame info
-    cv2.putText(frame, f"Frame: {frame_no}", 
-                (panel_x + 10, panel_y + 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-    
-    cv2.putText(frame, f"Total Saved: {total_saved}", 
-                (panel_x + 10, panel_y + 70),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    
+    cv2.putText(
+        frame,
+        f"Frame: {frame_no}",
+        (panel_x + 10, panel_y + 50),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (200, 200, 200),
+        1,
+    )
+
+    cv2.putText(
+        frame,
+        f"Total Saved: {total_saved}",
+        (panel_x + 10, panel_y + 70),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 255, 0),
+        2,
+    )
+
     # Column headers
     y_offset = panel_y + 100
-    cv2.putText(frame, "Class", (panel_x + 10, y_offset),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-    cv2.putText(frame, "Unique", (panel_x + 120, y_offset),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-    cv2.putText(frame, "Current", (panel_x + 220, y_offset),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-    
+    cv2.putText(
+        frame,
+        "Class",
+        (panel_x + 10, y_offset),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+    )
+    cv2.putText(
+        frame,
+        "Unique",
+        (panel_x + 120, y_offset),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+    )
+    cv2.putText(
+        frame,
+        "Current",
+        (panel_x + 220, y_offset),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+    )
+
     # Draw separator line
     y_offset += 5
-    cv2.line(frame, (panel_x + 10, y_offset), 
-             (panel_x + panel_width - 10, y_offset), (100, 100, 100), 1)
-    
+    cv2.line(
+        frame,
+        (panel_x + 10, y_offset),
+        (panel_x + panel_width - 10, y_offset),
+        (100, 100, 100),
+        1,
+    )
+
     # Stats for each class
     y_offset += 15
     for class_name in unique_objects.keys():
         color = colors.get(class_name, (255, 255, 255))
         unique_count = len(unique_counts[class_name])
         current_count = current_counts[class_name]
-        
+
         # Class name with color indicator
         cv2.circle(frame, (panel_x + 20, y_offset - 3), 4, color, -1)
-        cv2.putText(frame, class_name.capitalize(), 
-                    (panel_x + 30, y_offset),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
-        
+        cv2.putText(
+            frame,
+            class_name.capitalize(),
+            (panel_x + 30, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+        )
+
         # Unique count
-        cv2.putText(frame, str(unique_count), 
-                    (panel_x + 135, y_offset),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        
+        cv2.putText(
+            frame,
+            str(unique_count),
+            (panel_x + 135, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+        )
+
         # Current count
-        cv2.putText(frame, str(current_count), 
-                    (panel_x + 235, y_offset),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 0), 1)
-        
+        cv2.putText(
+            frame,
+            str(current_count),
+            (panel_x + 235, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (200, 200, 0),
+            1,
+        )
+
         y_offset += 20
-    
+
     return frame
 
 
 def print_stats_table(unique_counts, current_counts, frame_no, total_saved):
     """Print statistics table to console"""
     table = Table(title=f"Tracking Statistics (Frame {frame_no})")
-    
+
     table.add_column("Class", style="cyan", no_wrap=True)
     table.add_column("Unique Objects", style="green", justify="right")
     table.add_column("Currently Visible", style="yellow", justify="right")
-    
+
     for class_name in unique_objects.keys():
         unique_count = len(unique_counts[class_name])
         current_count = current_counts[class_name]
-        table.add_row(
-            class_name.capitalize(),
-            str(unique_count),
-            str(current_count)
-        )
-    
+        table.add_row(class_name.capitalize(), str(unique_count), str(current_count))
+
     table.add_row("", "", "", style="dim")
-    table.add_row("[bold]TOTAL SAVED[/bold]", f"[bold green]{total_saved}[/bold green]", "", style="bold")
-    
+    table.add_row(
+        "[bold]TOTAL SAVED[/bold]",
+        f"[bold green]{total_saved}[/bold green]",
+        "",
+        style="bold",
+    )
+
     console.print(table)
     console.print()
 
@@ -236,7 +307,6 @@ while True:
     results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
 
     for r in results:
-
         if not hasattr(r, "boxes") or r.boxes is None:
             continue
 
@@ -292,9 +362,9 @@ while True:
                 if crop.size == 0:
                     continue
 
-                # Optionally resize the crop
+                # Optionally resize the crop while maintaining aspect ratio
                 if CROP_SIZE is not None:
-                    crop = cv2.resize(crop, CROP_SIZE)
+                    crop = crop_img(crop, CROP_SIZE)
 
                 # Generate filename with frame number first, then label
                 filename = f"f{frame_no:06d}_{label}_id{track_id}_c{conf:.2f}.jpg"
@@ -340,16 +410,13 @@ while True:
                     2,
                 )
 
-    # Print stats to console periodically (when not drawing)
-    if not ENABLE_DRAWING and frame_no % STATS_UPDATE_INTERVAL == 0:
-        print_stats_table(unique_objects, current_detections, frame_no, saved_this_session)
-
     # Update display or progress bar
     if ENABLE_DRAWING:
         # Draw statistics panel on frame
-        frame = draw_stats_panel(frame, unique_objects, current_detections, 
-                                 frame_no, saved_this_session)
-        
+        frame = draw_stats_panel(
+            frame, unique_objects, current_detections, frame_no, saved_this_session
+        )
+
         cv2.imshow("Object Tracking with Statistics", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
