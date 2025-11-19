@@ -14,10 +14,11 @@ from src.database import init_db, save_detections
 
 # --- CONFIG ---
 MODEL_PATH = "models/yolo11m.pt"
-VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
+# VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
+VIDEO_PATH = "video/glen-broadway/short/before_glen-broadway.mp4"
 MIN_CONFIDENCE = 0.6  # only consider detections above this confidence
 CROP_PADDING = 10  # pixels of padding around the bbox
-PROCESS_EVERY_N_FRAMES = 3  # Process every nth frame
+PROCESS_EVERY_N_FRAMES = 2  # Process every nth frame
 # ----------------
 
 # Parse command-line arguments
