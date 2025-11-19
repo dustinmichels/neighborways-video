@@ -28,7 +28,7 @@ args = parser.parse_args()
 # MODEL_PATH = "yolov8s.pt"
 # MODEL_PATH = "yolov10m.pt"
 # MODEL_PATH = "yolo11l.pt"
-MODEL_PATH = "yolo11m.pt"
+MODEL_PATH = "models/yolo11m.pt"
 
 # VIDEO_PATH = "video/glen-oliver/after_glen-oliver.mp4"
 VIDEO_PATH = "video/glen-oliver/short/before_glen-oliver.mp4"
@@ -273,6 +273,9 @@ def print_stats_table(unique_counts, current_counts, frame_no, total_saved):
     console.print()
 
 
+# Print initial stats
+console.print("[bold green]Starting video processing...[/bold green]\n")
+
 # Create progress bar (only when not drawing to screen)
 if not ENABLE_DRAWING:
     progress = Progress(
@@ -283,9 +286,6 @@ if not ENABLE_DRAWING:
     )
     progress.start()
     task = progress.add_task("[cyan]Processing frames...", total=total_frames)
-
-# Print initial stats
-console.print("[bold green]Starting video processing...[/bold green]\n")
 
 while True:
     ret, frame = cap.read()
@@ -304,7 +304,9 @@ while True:
         current_detections[key] = 0
 
     # Run tracking with verbose=False to suppress output
-    results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
+    results = model.track(
+        frame, persist=True, tracker="bytetrack_config.yaml", verbose=False
+    )
 
     for r in results:
         if not hasattr(r, "boxes") or r.boxes is None:
@@ -460,6 +462,15 @@ with open(json_manifest_path, "w") as jsonfile:
     json.dump(manifest_data, jsonfile, indent=2)
 
 console.print(f"[green]✓[/green] JSON manifest: {json_manifest_path.resolve()}")
+
+# Write duplicate bins (each item in its own bin)
+console.print("[cyan]Writing duplicate bins...[/cyan]")
+bins_path = OUTPUT_DIR.parent / "duplicate_bins.json"
+bins_data = {"bins": [[item] for item in manifest_data]}
+with open(bins_path, "w") as jsonfile:
+    json.dump(bins_data, jsonfile, indent=2)
+
+console.print(f"[green]✓[/green] Duplicate bins: {bins_path.resolve()}")
 
 # Print summary
 console.print("\n[bold green]═══ FINAL SUMMARY ═══[/bold green]")

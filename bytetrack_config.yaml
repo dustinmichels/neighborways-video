@@ -8,3 +8,4 @@ new_track_thresh: 0.25 # (float) Start a new track if no match ≥ this; higher 
 track_buffer: 30 # (int) Frames to keep lost tracks alive; higher handles occlusion, increases ID switches risk
 match_thresh: 0.8 # (float) Association similarity threshold (IoU/cost); tune with detector quality
 fuse_score: True # (bool) Fuse detection score with motion/IoU for matching; stabilizes weak detections
+with_reid: True

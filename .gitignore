@@ -1,7 +1,11 @@
 video/**
 out/**
 
+# db
+*.db
+
 # YOLOv8 model weights
+models/yolo*.pt
 yolo*.pt
 
 # Jupyter

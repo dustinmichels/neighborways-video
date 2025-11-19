@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.12.4",
     "rich>=14.2.0",
     "scikit-learn>=1.7.2",
+    "sqlmodel>=0.0.27",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
     "tqdm>=4.67.1",
